@@ -86,7 +86,26 @@
 
         .threat-jet { border-left-color: #ff0000; }
         .threat-missile { border-left-color: #ff9900; }
-        .threat-tank { border-left-color: #ffff00; }
+        .threat-squadron { border-left-color: #ffff00; }
+
+        #defense-status {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            z-index: 10;
+            color: #0f0;
+            text-shadow: 0 0 10px #0f0;
+            font-size: 11px;
+            border: 1px solid #0f0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            max-width: 250px;
+        }
+
+        .defense-line {
+            margin: 4px 0;
+            padding: 2px 0;
+        }
 
         #game-over {
             position: absolute;
@@ -138,7 +157,7 @@
             bottom: 10px;
             left: 20px;
             right: 20px;
-            font-size: 12px;
+            font-size: 11px;
             color: #0f0;
             opacity: 0.8;
             text-align: center;
@@ -172,8 +191,14 @@
             <div style="text-align: center; color: #ff6600; margin-bottom: 8px; border-bottom: 1px solid #0f0; padding-bottom: 5px;">CONTACTOS ACTIVOS</div>
             <div id="threats-detail"></div>
         </div>
+        <div id="defense-status">
+            <div style="text-align: center; color: #00ff00; margin-bottom: 5px; border-bottom: 1px solid #0f0; padding-bottom: 5px;">DEFENSAS DISPONIBLES</div>
+            <div class="defense-line">M: Misiles Contraataque: <span id="counter-missiles">0</span></div>
+            <div class="defense-line">N: Misiles Tierra-Aire: <span id="air-missiles">0</span></div>
+            <div class="defense-line">K: Tropas: <span id="ground-troops">0</span></div>
+        </div>
         <div id="instructions">
-            CLICK EN RADAR = Dirigir tropas | ESPACIO = Pausa | R = Reiniciar
+            CLICK = Dirigir defensa | M = Misiles contraataque | N = Misiles tierra-aire | K = Tropas | ESPACIO = Pausa | R = Reiniciar
         </div>
         <div id="game-over">
             <h1>MISIÓN FALLIDA</h1>
@@ -207,12 +232,18 @@
             selectedTarget: null,
             radarCenter: { x: canvas.width / 2, y: canvas.height / 2 },
             radarRadius: Math.min(canvas.width, canvas.height) / 2 - 60,
-            radarSweep: 0
+            radarSweep: 0,
+            // Defensas
+            counterMissiles: 5,
+            airMissiles: 5,
+            groundTroops: 3,
+            activatedDefense: null
         };
 
         let enemies = [];
         let projectiles = [];
-        let tankGroups = []; // Grupos de tanques
+        let defenses = []; // Defensas desplegadas
+        let explosions = [];
 
         const ENEMY_TYPES = {
             JET: { speed: 60, health: 1, color: '#ff0000', symbol: '✈', threat: 30 },
@@ -220,30 +251,36 @@
             TANK: { speed: 30, health: 3, color: '#ffff00', symbol: '⬛', threat: 20 }
         };
 
-        // Formaciones militares de tanques (basadas en formaciones reales)
+        const DEFENSE_TYPES = {
+            COUNTER_MISSILE: { color: '#00ff00', symbol: '◆', speed: 400, range: 150 },
+            AIR_MISSILE: { color: '#00ffff', symbol: '▲', speed: 450, range: 200 },
+            GROUND_TROOP: { color: '#ffff00', symbol: '●', speed: 200, range: 100 }
+        };
+
+        // Formaciones militares de tanques
         const TANK_FORMATIONS = {
-            WEDGE: [ // Cuña - ofensiva
+            WEDGE: [ 
                 { x: 0, y: 0 },
                 { x: 30, y: -20 },
                 { x: 30, y: 20 },
                 { x: 60, y: -35 },
                 { x: 60, y: 35 }
             ],
-            LINE: [ // Línea - defensa
+            LINE: [ 
                 { x: 0, y: -25 },
                 { x: 0, y: 0 },
                 { x: 0, y: 25 },
                 { x: 0, y: -50 },
                 { x: 0, y: 50 }
             ],
-            COLUMN: [ // Columna - movimiento rápido
+            COLUMN: [ 
                 { x: 0, y: 0 },
                 { x: -25, y: 0 },
                 { x: 25, y: 0 },
                 { x: -50, y: 0 },
                 { x: 50, y: 0 }
             ],
-            DIAMOND: [ // Diamante - patrulla
+            DIAMOND: [ 
                 { x: 0, y: 0 },
                 { x: 30, y: 0 },
                 { x: -30, y: 0 },
@@ -269,12 +306,10 @@
             ctx.lineWidth = 2;
             ctx.globalAlpha = 0.8;
 
-            // Círculo exterior
             ctx.beginPath();
             ctx.arc(gameState.radarCenter.x, gameState.radarCenter.y, gameState.radarRadius, 0, Math.PI * 2);
             ctx.stroke();
 
-            // Círculos interiores
             ctx.lineWidth = 1;
             ctx.globalAlpha = 0.5;
             for (let i = 1; i < 5; i++) {
@@ -283,7 +318,7 @@
                 ctx.stroke();
             }
 
-            // Líneas de compass (N, S, E, W)
+            // Líneas de compass
             ctx.lineWidth = 1;
             ctx.globalAlpha = 0.4;
             ctx.beginPath();
@@ -309,7 +344,7 @@
             ctx.lineTo(gameState.radarCenter.x - diagDist, gameState.radarCenter.y + diagDist);
             ctx.stroke();
 
-            // Sweep del radar (línea verde giratoria)
+            // Sweep del radar
             ctx.globalAlpha = 0.6;
             ctx.strokeStyle = '#00ff00';
             ctx.lineWidth = 2;
@@ -321,7 +356,6 @@
             ctx.lineTo(sweepX, sweepY);
             ctx.stroke();
 
-            // Área de sweep (efecto de barrido)
             ctx.globalAlpha = 0.1;
             ctx.fillStyle = '#00ff00';
             ctx.beginPath();
@@ -351,25 +385,22 @@
 
             // Dibujar enemigos
             ctx.globalAlpha = 0.9;
-            enemies.forEach((enemy, idx) => {
+            enemies.forEach((enemy) => {
                 ctx.fillStyle = enemy.color;
                 ctx.strokeStyle = enemy.color;
                 ctx.lineWidth = 2;
 
-                // Símbolo del tipo de enemigo
                 ctx.font = 'bold 16px Courier New';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(enemy.symbol, enemy.x, enemy.y);
 
-                // Círculo de alcance (más tenue)
                 ctx.globalAlpha = 0.2;
                 ctx.beginPath();
                 ctx.arc(enemy.x, enemy.y, 15, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.globalAlpha = 0.9;
 
-                // Línea de formación para tanques
                 if (enemy.type === 'TANK' && enemy.groupLeader) {
                     ctx.globalAlpha = 0.3;
                     ctx.strokeStyle = enemy.color;
@@ -384,7 +415,25 @@
                 }
             });
 
-            // Dibujar proyectiles
+            // Dibujar defensas
+            defenses.forEach(def => {
+                ctx.fillStyle = def.color;
+                ctx.strokeStyle = def.color;
+                ctx.lineWidth = 2;
+
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(def.symbol, def.x, def.y);
+
+                ctx.globalAlpha = 0.1;
+                ctx.beginPath();
+                ctx.arc(def.x, def.y, def.range, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 0.9;
+            });
+
+            // Dibujar proyectiles (enemigos y defensas)
             ctx.fillStyle = '#00ff00';
             ctx.globalAlpha = 1;
             projectiles.forEach(proj => {
@@ -392,7 +441,6 @@
                 ctx.arc(proj.x, proj.y, 4, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Estela
                 ctx.globalAlpha = 0.4;
                 ctx.beginPath();
                 ctx.arc(proj.x, proj.y, 7, 0, Math.PI * 2);
@@ -400,19 +448,19 @@
                 ctx.globalAlpha = 1;
             });
 
-            // Línea de targeting si hay objetivo seleccionado
-            if (gameState.selectedTarget) {
-                ctx.strokeStyle = '#00ff00';
-                ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.5;
-                ctx.setLineDash([5, 5]);
+            // Dibujar explosiones
+            explosions.forEach(exp => {
+                ctx.fillStyle = `rgba(255, 165, 0, ${exp.life})`;
                 ctx.beginPath();
-                ctx.moveTo(gameState.radarCenter.x, gameState.radarCenter.y);
-                ctx.lineTo(gameState.selectedTarget.x, gameState.selectedTarget.y);
+                ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = `rgba(255, 100, 0, ${exp.life})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(exp.x, exp.y, exp.radius + 10, 0, Math.PI * 2);
                 ctx.stroke();
-                ctx.setLineDash([]);
-                gameState.selectedTarget = null;
-            }
+            });
 
             ctx.globalAlpha = 1;
         }
@@ -440,8 +488,44 @@
                     damageBase(gameState.maxHealth * 0.35);
                     enemies.splice(i, 1);
                     gameState.threats--;
+                    createExplosion(enemy.x, enemy.y);
                     playExplosionSound();
                     continue;
+                }
+            }
+
+            // Actualizar defensas
+            for (let i = defenses.length - 1; i >= 0; i--) {
+                let def = defenses[i];
+                
+                // Las defensas buscan objetivos automáticamente
+                let targetEnemy = null;
+                let minDist = def.range;
+
+                for (let e = 0; e < enemies.length; e++) {
+                    let enemy = enemies[e];
+                    let d = Math.hypot(def.x - enemy.x, def.y - enemy.y);
+                    
+                    // Filtrar por tipo según la defensa
+                    let canTarget = false;
+                    if (def.type === 'COUNTER_MISSILE' && enemy.type === 'MISSILE') canTarget = true;
+                    if (def.type === 'AIR_MISSILE' && enemy.type === 'JET') canTarget = true;
+                    if (def.type === 'GROUND_TROOP' && enemy.type === 'TANK') canTarget = true;
+
+                    if (canTarget && d < minDist) {
+                        targetEnemy = enemy;
+                        minDist = d;
+                    }
+                }
+
+                if (targetEnemy) {
+                    fireDefense(def, targetEnemy.x, targetEnemy.y);
+                }
+
+                // Duración de la defensa
+                def.duration -= 0.016;
+                if (def.duration <= 0) {
+                    defenses.splice(i, 1);
                 }
             }
 
@@ -464,6 +548,7 @@
                             gameState.score += ENEMY_TYPES[enemy.type].threat * 10;
                             enemies.splice(e, 1);
                             gameState.threats--;
+                            createExplosion(enemy.x, enemy.y);
                             playKillSound();
                         }
                         break;
@@ -477,6 +562,15 @@
 
                 if (proj.x < 0 || proj.x > canvas.width || proj.y < 0 || proj.y > canvas.height) {
                     projectiles.splice(i, 1);
+                }
+            }
+
+            // Actualizar explosiones
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].life -= 0.016;
+                explosions[i].radius += 0.5;
+                if (explosions[i].life <= 0) {
+                    explosions.splice(i, 1);
                 }
             }
 
@@ -496,28 +590,30 @@
             // Actualizar lista de amenazas
             let threatsList = document.getElementById('threats-detail');
             threatsList.innerHTML = '';
-            enemies.forEach((enemy, idx) => {
+            enemies.forEach((enemy) => {
                 let threatDiv = document.createElement('div');
-                threatDiv.className = `threat-item threat-${enemy.type.toLowerCase()}`;
+                let typeDisplay = enemy.type === 'TANK' ? 'ESCUADRÓN' : enemy.type;
+                threatDiv.className = `threat-item threat-${enemy.type === 'TANK' ? 'squadron' : enemy.type.toLowerCase()}`;
                 let dist = Math.floor(Math.hypot(enemy.x - gameState.radarCenter.x, enemy.y - gameState.radarCenter.y));
-                threatDiv.textContent = `${enemy.symbol} ${enemy.type} - ${dist}km`;
+                threatDiv.textContent = `${enemy.symbol} ${typeDisplay} - ${dist}km`;
                 threatsList.appendChild(threatDiv);
             });
+
+            // Actualizar defensas disponibles
+            document.getElementById('counter-missiles').textContent = gameState.counterMissiles;
+            document.getElementById('air-missiles').textContent = gameState.airMissiles;
+            document.getElementById('ground-troops').textContent = gameState.groundTroops;
         }
 
         function spawnTankGroup(angle, distance) {
-            // Seleccionar formación aleatoria
             const formationNames = Object.keys(TANK_FORMATIONS);
             const formationType = formationNames[Math.floor(Math.random() * formationNames.length)];
             const formation = TANK_FORMATIONS[formationType];
 
-            // Posición del líder del grupo
             const leaderX = gameState.radarCenter.x + Math.cos(angle) * distance;
             const leaderY = gameState.radarCenter.y + Math.sin(angle) * distance;
 
-            // Crear tanques en formación
             formation.forEach((pos, idx) => {
-                // Rotar la posición relativa según el ángulo de movimiento
                 const rotatedX = pos.x * Math.cos(angle + Math.PI) - pos.y * Math.sin(angle + Math.PI);
                 const rotatedY = pos.x * Math.sin(angle + Math.PI) + pos.y * Math.cos(angle + Math.PI);
 
@@ -525,12 +621,12 @@
                     x: leaderX + rotatedX,
                     y: leaderY + rotatedY,
                     type: 'TANK',
-                    angle: angle + Math.PI + (Math.random() - 0.5) * 0.1, // Pequeña variación
+                    angle: angle + Math.PI + (Math.random() - 0.5) * 0.1,
                     speed: ENEMY_TYPES['TANK'].speed,
                     health: ENEMY_TYPES['TANK'].health,
                     color: ENEMY_TYPES['TANK'].color,
                     symbol: ENEMY_TYPES['TANK'].symbol,
-                    groupLeader: idx === 0, // Primer tanque es el líder
+                    groupLeader: idx === 0,
                     leaderX: leaderX,
                     leaderY: leaderY,
                     formation: formationType
@@ -548,25 +644,21 @@
 
             let waveComposition = [];
 
-            // Jets individuales
             const jetCount = Math.floor(gameState.wave / 2);
             for (let i = 0; i < jetCount; i++) {
                 waveComposition.push({ type: 'JET', delay: i * 600 });
             }
 
-            // Misiles individuales
             const missileCount = Math.floor(gameState.wave / 3);
             for (let i = 0; i < missileCount; i++) {
                 waveComposition.push({ type: 'MISSILE', delay: i * 700 + 1000 });
             }
 
-            // Grupos de tanques
             const tankGroupCount = Math.ceil(gameState.wave / 2);
             for (let i = 0; i < tankGroupCount; i++) {
                 waveComposition.push({ type: 'TANK_GROUP', delay: i * 1000 + 1500 });
             }
 
-            // Spawnear enemigos
             waveComposition.forEach((item) => {
                 setTimeout(() => {
                     if (item.type === 'JET') {
@@ -620,6 +712,73 @@
             });
 
             gameState.wave++;
+            
+            // Regenerar defensas con cada oleada
+            gameState.counterMissiles += 2;
+            gameState.airMissiles += 2;
+            gameState.groundTroops += 1;
+        }
+
+        function deployDefense(defenseType) {
+            if (gameState.gameOver || gameState.paused) return;
+
+            // Verificar disponibilidad
+            if (defenseType === 'COUNTER_MISSILE' && gameState.counterMissiles <= 0) return;
+            if (defenseType === 'AIR_MISSILE' && gameState.airMissiles <= 0) return;
+            if (defenseType === 'GROUND_TROOP' && gameState.groundTroops <= 0) return;
+
+            // Desplegar defensa en el centro del radar
+            let def = {
+                x: gameState.radarCenter.x,
+                y: gameState.radarCenter.y,
+                type: defenseType,
+                color: DEFENSE_TYPES[defenseType].color,
+                symbol: DEFENSE_TYPES[defenseType].symbol,
+                speed: DEFENSE_TYPES[defenseType].speed,
+                range: DEFENSE_TYPES[defenseType].range,
+                duration: 15, // 15 segundos
+                fireRate: 0,
+                fireRateMax: 5
+            };
+
+            defenses.push(def);
+
+            // Decrementar disponibilidad
+            if (defenseType === 'COUNTER_MISSILE') gameState.counterMissiles--;
+            if (defenseType === 'AIR_MISSILE') gameState.airMissiles--;
+            if (defenseType === 'GROUND_TROOP') gameState.groundTroops--;
+
+            playRadarSound();
+        }
+
+        function fireDefense(def, toX, toY) {
+            def.fireRate--;
+            if (def.fireRate > 0) return;
+
+            def.fireRate = def.fireRateMax;
+
+            let angle = Math.atan2(toY - def.y, toX - def.x);
+            projectiles.push({
+                x: def.x,
+                y: def.y,
+                angle: angle,
+                speed: def.speed,
+                defenseType: def.type
+            });
+
+            playFireSound();
+        }
+
+        function createExplosion(x, y) {
+            for (let i = 0; i < 3; i++) {
+                explosions.push({
+                    x: x + (Math.random() - 0.5) * 20,
+                    y: y + (Math.random() - 0.5) * 20,
+                    radius: 5,
+                    life: 1,
+                    maxLife: 1
+                });
+            }
         }
 
         function handleRadarClick(e) {
@@ -732,6 +891,15 @@
             if (e.key.toLowerCase() === 'r') {
                 location.reload();
             }
+            if (e.key.toLowerCase() === 'm') {
+                deployDefense('COUNTER_MISSILE');
+            }
+            if (e.key.toLowerCase() === 'n') {
+                deployDefense('AIR_MISSILE');
+            }
+            if (e.key.toLowerCase() === 'k') {
+                deployDefense('GROUND_TROOP');
+            }
         });
 
         // Game loop
@@ -745,7 +913,6 @@
             initAudio();
             spawnWave();
             
-            // Spawn rate reducido: 8 segundos en lugar de 6
             setInterval(spawnWave, 8000);
             
             gameLoop();
