@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Desert Radar - Gulf War</title>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
     <style>
         * {
             margin: 0;
@@ -46,7 +45,7 @@
             color: #0f0;
             text-shadow: 0 0 10px #0f0, 0 0 20px rgba(0, 255, 0, 0.5);
             font-size: 16px;
-            line-height: 1.6;
+            line-height: 1.8;
         }
 
         .stat-line {
@@ -57,9 +56,11 @@
         }
 
         #score { font-size: 18px; color: #fff; }
-        #wave { font-size: 14px; }
+        #round { font-size: 14px; }
+        #timer { font-size: 14px; color: #ffff00; }
         #threats { font-size: 14px; color: #ff6600; }
         #health { font-size: 14px; color: #ff0000; }
+        #points { font-size: 16px; color: #00ff00; font-weight: bold; }
 
         #threat-list {
             position: absolute;
@@ -86,25 +87,120 @@
 
         .threat-jet { border-left-color: #ff0000; }
         .threat-missile { border-left-color: #ff9900; }
-        .threat-squadron { border-left-color: #ffff00; }
+        .threat-tank { border-left-color: #ffff00; }
 
-        #defense-status {
+        #shop-overlay {
             position: absolute;
-            bottom: 60px;
-            left: 20px;
-            z-index: 10;
-            color: #0f0;
-            text-shadow: 0 0 10px #0f0;
-            font-size: 11px;
-            border: 1px solid #0f0;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            max-width: 250px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 200;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
         }
 
-        .defense-line {
-            margin: 4px 0;
-            padding: 2px 0;
+        #shop-overlay.active {
+            display: flex;
+        }
+
+        #shop-content {
+            background: rgba(0, 20, 0, 0.9);
+            border: 3px solid #0f0;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        #shop-content h1 {
+            font-size: 28px;
+            color: #0f0;
+            text-shadow: 0 0 20px #0f0;
+            margin-bottom: 20px;
+        }
+
+        #shop-points-display {
+            font-size: 20px;
+            color: #ffff00;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px #ffff00;
+        }
+
+        #shop-items {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .shop-item {
+            background: rgba(0, 50, 0, 0.8);
+            border: 2px solid #0f0;
+            padding: 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .shop-item:hover {
+            background: rgba(0, 100, 0, 0.8);
+            box-shadow: 0 0 15px #0f0;
+            transform: scale(1.05);
+        }
+
+        .shop-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .shop-item.disabled:hover {
+            transform: scale(1);
+            box-shadow: none;
+        }
+
+        .shop-item h3 {
+            color: #0f0;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .shop-item p {
+            color: #0f0;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .shop-price {
+            color: #ffff00;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        #shop-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .shop-button {
+            padding: 12px 30px;
+            font-size: 14px;
+            background: #0f0;
+            color: #000;
+            border: 2px solid #0f0;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+
+        .shop-button:hover {
+            background: #00ff00;
+            box-shadow: 0 0 20px #0f0;
         }
 
         #game-over {
@@ -157,7 +253,7 @@
             bottom: 10px;
             left: 20px;
             right: 20px;
-            font-size: 11px;
+            font-size: 12px;
             color: #0f0;
             opacity: 0.8;
             text-align: center;
@@ -182,8 +278,10 @@
     <div id="game-container">
         <canvas id="radarCanvas"></canvas>
         <div id="ui">
-            <div id="score" class="stat-line">PUNTOS: 0</div>
-            <div id="wave" class="stat-line">OLEADA: 1</div>
+            <div id="score" class="stat-line">PUNTOS TOTALES: 0</div>
+            <div id="points" class="stat-line">PUNTOS RONDA: 0</div>
+            <div id="round" class="stat-line">RONDA: 1</div>
+            <div id="timer" class="stat-line">TIEMPO: 20s</div>
             <div id="threats" class="stat-line">AMENAZAS: 0</div>
             <div id="health" class="stat-line">DEFENSA: 100%</div>
         </div>
@@ -191,19 +289,23 @@
             <div style="text-align: center; color: #ff6600; margin-bottom: 8px; border-bottom: 1px solid #0f0; padding-bottom: 5px;">CONTACTOS ACTIVOS</div>
             <div id="threats-detail"></div>
         </div>
-        <div id="defense-status">
-            <div style="text-align: center; color: #00ff00; margin-bottom: 5px; border-bottom: 1px solid #0f0; padding-bottom: 5px;">DEFENSAS DISPONIBLES</div>
-            <div class="defense-line">M: Misiles Contraataque: <span id="counter-missiles">0</span></div>
-            <div class="defense-line">N: Misiles Tierra-Aire: <span id="air-missiles">0</span></div>
-            <div class="defense-line">K: Tropas: <span id="ground-troops">0</span></div>
+        <div id="shop-overlay">
+            <div id="shop-content">
+                <h1>⚔️ TIENDA DE DEFENSAS ⚔️</h1>
+                <div id="shop-points-display">PUNTOS DISPONIBLES: 0</div>
+                <div id="shop-items"></div>
+                <div id="shop-buttons">
+                    <button class="shop-button" onclick="continueGame()">CONTINUAR RONDA</button>
+                </div>
+            </div>
         </div>
         <div id="instructions">
-            CLICK = Dirigir defensa | M = Misiles contraataque | N = Misiles tierra-aire | K = Tropas | ESPACIO = Pausa | R = Reiniciar
+            CLICK EN RADAR = Dirigir tropas | ESPACIO = Pausa | R = Reiniciar
         </div>
         <div id="game-over">
             <h1>MISIÓN FALLIDA</h1>
             <p id="final-score">Puntuación Final: 0</p>
-            <p id="final-wave">Oleadas Completadas: 0</p>
+            <p id="final-round">Rondas Completadas: 0</p>
             <button onclick="location.reload()">REINTENTAR MISIÓN</button>
         </div>
     </div>
@@ -213,7 +315,6 @@
         const canvas = document.getElementById('radarCanvas');
         const ctx = canvas.getContext('2d');
         
-        // Ajustar canvas a su tamaño visual
         function resizeCanvas() {
             canvas.width = canvas.offsetWidth;
             canvas.height = canvas.offsetHeight;
@@ -221,9 +322,39 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
+        // Definiciones de defensas
+        const DEFENSES = {
+            GUN: {
+                name: 'Cañón AA',
+                cost: 50,
+                description: 'Dispara a Jets/Misiles',
+                range: 100,
+                damage: 2,
+                fireRate: 0.5
+            },
+            MISSILE: {
+                name: 'Lanzador Misiles',
+                cost: 80,
+                description: 'Destruye grupos de tanques',
+                range: 150,
+                damage: 5,
+                fireRate: 1
+            },
+            SHIELD: {
+                name: 'Escudo de Energía',
+                cost: 120,
+                description: 'Bloquea 1 ataque crítico',
+                absorption: 50,
+                duration: 30
+            }
+        };
+
         let gameState = {
             score: 0,
-            wave: 1,
+            roundPoints: 0,
+            round: 1,
+            roundTime: 20,
+            roundTimeRemaining: 20,
             health: 100,
             maxHealth: 100,
             threats: 0,
@@ -233,54 +364,46 @@
             radarCenter: { x: canvas.width / 2, y: canvas.height / 2 },
             radarRadius: Math.min(canvas.width, canvas.height) / 2 - 60,
             radarSweep: 0,
-            // Defensas
-            counterMissiles: 5,
-            airMissiles: 5,
-            groundTroops: 3,
-            activatedDefense: null
+            roundActive: false,
+            inShop: false,
+            defenses: [],
+            roundStartTime: 0
         };
 
         let enemies = [];
         let projectiles = [];
-        let defenses = []; // Defensas desplegadas
-        let explosions = [];
+        let floatingPoints = [];
+        let squadrons = {}; // Agrupar enemigos por squadrón
 
         const ENEMY_TYPES = {
-            JET: { speed: 60, health: 1, color: '#ff0000', symbol: '✈', threat: 30 },
-            MISSILE: { speed: 80, health: 1, color: '#ff9900', symbol: '➤', threat: 50 },
-            TANK: { speed: 30, health: 3, color: '#ffff00', symbol: '⬛', threat: 20 }
+            JET: { speed: 60, health: 1, color: '#ff0000', symbol: '✈', threat: 30, points: 2 },
+            MISSILE: { speed: 80, health: 1, color: '#ff9900', symbol: '➤', threat: 50, points: 3 },
+            TANK: { speed: 30, health: 3, color: '#ffff00', symbol: '⬛', threat: 20, points: 1 }
         };
 
-        const DEFENSE_TYPES = {
-            COUNTER_MISSILE: { color: '#00ff00', symbol: '◆', speed: 400, range: 150 },
-            AIR_MISSILE: { color: '#00ffff', symbol: '▲', speed: 450, range: 200 },
-            GROUND_TROOP: { color: '#ffff00', symbol: '●', speed: 200, range: 100 }
-        };
-
-        // Formaciones militares de tanques
         const TANK_FORMATIONS = {
-            WEDGE: [ 
+            WEDGE: [
                 { x: 0, y: 0 },
                 { x: 30, y: -20 },
                 { x: 30, y: 20 },
                 { x: 60, y: -35 },
                 { x: 60, y: 35 }
             ],
-            LINE: [ 
+            LINE: [
                 { x: 0, y: -25 },
                 { x: 0, y: 0 },
                 { x: 0, y: 25 },
                 { x: 0, y: -50 },
                 { x: 0, y: 50 }
             ],
-            COLUMN: [ 
+            COLUMN: [
                 { x: 0, y: 0 },
                 { x: -25, y: 0 },
                 { x: 25, y: 0 },
                 { x: -50, y: 0 },
                 { x: 50, y: 0 }
             ],
-            DIAMOND: [ 
+            DIAMOND: [
                 { x: 0, y: 0 },
                 { x: 30, y: 0 },
                 { x: -30, y: 0 },
@@ -289,19 +412,16 @@
             ]
         };
 
-        // Animación del sweep del radar
         function animateRadarSweep() {
             gameState.radarSweep = (gameState.radarSweep + 2) % 360;
         }
 
         function drawRadar() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Fondo oscuro
             ctx.fillStyle = '#001a00';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Círculos concéntricos del radar
+            // Radar circles
             ctx.strokeStyle = '#00ff00';
             ctx.lineWidth = 2;
             ctx.globalAlpha = 0.8;
@@ -318,7 +438,7 @@
                 ctx.stroke();
             }
 
-            // Líneas de compass
+            // Compass lines
             ctx.lineWidth = 1;
             ctx.globalAlpha = 0.4;
             ctx.beginPath();
@@ -331,7 +451,7 @@
             ctx.lineTo(gameState.radarCenter.x, gameState.radarCenter.y + gameState.radarRadius);
             ctx.stroke();
 
-            // Líneas diagonales
+            // Diagonal lines
             const diagDist = gameState.radarRadius / Math.sqrt(2);
             ctx.globalAlpha = 0.2;
             ctx.beginPath();
@@ -344,7 +464,7 @@
             ctx.lineTo(gameState.radarCenter.x - diagDist, gameState.radarCenter.y + diagDist);
             ctx.stroke();
 
-            // Sweep del radar
+            // Radar sweep
             ctx.globalAlpha = 0.6;
             ctx.strokeStyle = '#00ff00';
             ctx.lineWidth = 2;
@@ -363,14 +483,14 @@
             ctx.lineTo(gameState.radarCenter.x, gameState.radarCenter.y);
             ctx.fill();
 
-            // Centro del radar
+            // Center point
             ctx.globalAlpha = 1;
             ctx.fillStyle = '#00ff00';
             ctx.beginPath();
             ctx.arc(gameState.radarCenter.x, gameState.radarCenter.y, 6, 0, Math.PI * 2);
             ctx.fill();
 
-            // Etiquetas de dirección
+            // Direction labels
             ctx.globalAlpha = 0.7;
             ctx.fillStyle = '#00ff00';
             ctx.font = 'bold 14px Courier New';
@@ -383,64 +503,52 @@
             ctx.textAlign = 'left';
             ctx.fillText('E', gameState.radarCenter.x + gameState.radarRadius + 20, gameState.radarCenter.y);
 
-            // Dibujar enemigos
+            // Draw squadrons as groups
             ctx.globalAlpha = 0.9;
-            enemies.forEach((enemy) => {
-                ctx.fillStyle = enemy.color;
-                ctx.strokeStyle = enemy.color;
+            for (let squadronId in squadrons) {
+                let squadron = squadrons[squadronId];
+                if (squadron.enemies.length === 0) continue;
+
+                let avgX = 0, avgY = 0;
+                squadron.enemies.forEach(enemy => {
+                    avgX += enemy.x;
+                    avgY += enemy.y;
+                });
+                avgX /= squadron.enemies.length;
+                avgY /= squadron.enemies.length;
+
+                ctx.fillStyle = squadron.color;
+                ctx.strokeStyle = squadron.color;
                 ctx.lineWidth = 2;
 
-                ctx.font = 'bold 16px Courier New';
+                // Squadron symbol
+                ctx.font = 'bold 20px Courier New';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(enemy.symbol, enemy.x, enemy.y);
+                ctx.fillText(squadron.symbol, avgX, avgY);
 
-                ctx.globalAlpha = 0.2;
+                // Squadron circle
+                ctx.globalAlpha = 0.3;
                 ctx.beginPath();
-                ctx.arc(enemy.x, enemy.y, 15, 0, Math.PI * 2);
+                ctx.arc(avgX, avgY, 25, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.globalAlpha = 0.9;
 
-                if (enemy.type === 'TANK' && enemy.groupLeader) {
-                    ctx.globalAlpha = 0.3;
-                    ctx.strokeStyle = enemy.color;
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(enemy.x, enemy.y);
-                    ctx.lineTo(enemy.leaderX, enemy.leaderY);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.globalAlpha = 0.9;
-                }
-            });
-
-            // Dibujar defensas
-            defenses.forEach(def => {
-                ctx.fillStyle = def.color;
-                ctx.strokeStyle = def.color;
-                ctx.lineWidth = 2;
-
-                ctx.font = 'bold 14px Courier New';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(def.symbol, def.x, def.y);
-
-                ctx.globalAlpha = 0.1;
-                ctx.beginPath();
-                ctx.arc(def.x, def.y, def.range, 0, Math.PI * 2);
-                ctx.stroke();
+                // Squadron label
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = squadron.color;
+                ctx.font = 'bold 10px Courier New';
+                ctx.fillText(`${squadron.type}(${squadron.enemies.length})`, avgX, avgY + 35);
                 ctx.globalAlpha = 0.9;
-            });
+            }
 
-            // Dibujar proyectiles (enemigos y defensas)
+            // Draw projectiles
             ctx.fillStyle = '#00ff00';
             ctx.globalAlpha = 1;
             projectiles.forEach(proj => {
                 ctx.beginPath();
                 ctx.arc(proj.x, proj.y, 4, 0, Math.PI * 2);
                 ctx.fill();
-
                 ctx.globalAlpha = 0.4;
                 ctx.beginPath();
                 ctx.arc(proj.x, proj.y, 7, 0, Math.PI * 2);
@@ -448,29 +556,53 @@
                 ctx.globalAlpha = 1;
             });
 
-            // Dibujar explosiones
-            explosions.forEach(exp => {
-                ctx.fillStyle = `rgba(255, 165, 0, ${exp.life})`;
-                ctx.beginPath();
-                ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
-                ctx.fill();
+            // Draw floating points
+            ctx.globalAlpha = 1;
+            floatingPoints.forEach((point, idx) => {
+                ctx.fillStyle = point.color;
+                ctx.font = 'bold 16px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText(`+${point.value}`, point.x, point.y);
+            });
 
-                ctx.strokeStyle = `rgba(255, 100, 0, ${exp.life})`;
+            // Draw defenses
+            ctx.globalAlpha = 0.7;
+            gameState.defenses.forEach(defense => {
+                ctx.fillStyle = defense.type === 'SHIELD' ? '#0099ff' : '#00ff00';
+                ctx.beginPath();
+                ctx.arc(defense.x, defense.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = ctx.fillStyle;
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(exp.x, exp.y, exp.radius + 10, 0, Math.PI * 2);
+                ctx.arc(defense.x, defense.y, defense.range, 0, Math.PI * 2);
                 ctx.stroke();
             });
 
             ctx.globalAlpha = 1;
         }
 
+        function updateSquadrons() {
+            squadrons = {};
+            enemies.forEach(enemy => {
+                if (!squadrons[enemy.squadronId]) {
+                    squadrons[enemy.squadronId] = {
+                        enemies: [],
+                        type: enemy.type,
+                        color: enemy.color,
+                        symbol: enemy.symbol
+                    };
+                }
+                squadrons[enemy.squadronId].enemies.push(enemy);
+            });
+        }
+
         function update() {
-            if (gameState.gameOver || gameState.paused) return;
+            if (gameState.gameOver || gameState.paused || !gameState.roundActive) return;
 
             animateRadarSweep();
 
-            // Actualizar enemigos
+            // Update enemies
             for (let i = enemies.length - 1; i >= 0; i--) {
                 let enemy = enemies[i];
                 enemy.x += Math.cos(enemy.angle) * enemy.speed * 0.016;
@@ -486,50 +618,16 @@
 
                 if (enemy.type === 'MISSILE' && dist < 50) {
                     damageBase(gameState.maxHealth * 0.35);
+                    createFloatingPoint(enemy.x, enemy.y, ENEMY_TYPES[enemy.type].points, '#ffff00');
+                    gameState.roundPoints += ENEMY_TYPES[enemy.type].points;
                     enemies.splice(i, 1);
                     gameState.threats--;
-                    createExplosion(enemy.x, enemy.y);
                     playExplosionSound();
                     continue;
                 }
             }
 
-            // Actualizar defensas
-            for (let i = defenses.length - 1; i >= 0; i--) {
-                let def = defenses[i];
-                
-                // Las defensas buscan objetivos automáticamente
-                let targetEnemy = null;
-                let minDist = def.range;
-
-                for (let e = 0; e < enemies.length; e++) {
-                    let enemy = enemies[e];
-                    let d = Math.hypot(def.x - enemy.x, def.y - enemy.y);
-                    
-                    // Filtrar por tipo según la defensa
-                    let canTarget = false;
-                    if (def.type === 'COUNTER_MISSILE' && enemy.type === 'MISSILE') canTarget = true;
-                    if (def.type === 'AIR_MISSILE' && enemy.type === 'JET') canTarget = true;
-                    if (def.type === 'GROUND_TROOP' && enemy.type === 'TANK') canTarget = true;
-
-                    if (canTarget && d < minDist) {
-                        targetEnemy = enemy;
-                        minDist = d;
-                    }
-                }
-
-                if (targetEnemy) {
-                    fireDefense(def, targetEnemy.x, targetEnemy.y);
-                }
-
-                // Duración de la defensa
-                def.duration -= 0.016;
-                if (def.duration <= 0) {
-                    defenses.splice(i, 1);
-                }
-            }
-
-            // Actualizar proyectiles
+            // Update projectiles from player
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 let proj = projectiles[i];
                 proj.x += Math.cos(proj.angle) * proj.speed * 0.016;
@@ -546,9 +644,10 @@
 
                         if (enemy.health <= 0) {
                             gameState.score += ENEMY_TYPES[enemy.type].threat * 10;
+                            createFloatingPoint(enemy.x, enemy.y, ENEMY_TYPES[enemy.type].points, '#ffff00');
+                            gameState.roundPoints += ENEMY_TYPES[enemy.type].points;
                             enemies.splice(e, 1);
                             gameState.threats--;
-                            createExplosion(enemy.x, enemy.y);
                             playKillSound();
                         }
                         break;
@@ -565,47 +664,53 @@
                 }
             }
 
-            // Actualizar explosiones
-            for (let i = explosions.length - 1; i >= 0; i--) {
-                explosions[i].life -= 0.016;
-                explosions[i].radius += 0.5;
-                if (explosions[i].life <= 0) {
-                    explosions.splice(i, 1);
-                }
-            }
+            // Update floating points
+            floatingPoints = floatingPoints.filter(point => {
+                point.y -= 1;
+                point.life--;
+                return point.life > 0;
+            });
 
+            updateSquadrons();
             updateUI();
             drawRadar();
         }
 
         function updateUI() {
-            document.getElementById('score').textContent = `PUNTOS: ${gameState.score}`;
-            document.getElementById('wave').textContent = `OLEADA: ${gameState.wave}`;
+            document.getElementById('score').textContent = `PUNTOS TOTALES: ${gameState.score}`;
+            document.getElementById('points').textContent = `PUNTOS RONDA: ${gameState.roundPoints}`;
+            document.getElementById('round').textContent = `RONDA: ${gameState.round}`;
+            document.getElementById('timer').textContent = `TIEMPO: ${Math.ceil(gameState.roundTimeRemaining)}s`;
             document.getElementById('threats').textContent = `AMENAZAS: ${enemies.length}`;
             document.getElementById('health').textContent = `DEFENSA: ${Math.max(0, Math.floor(gameState.health))}%`;
 
             let healthColor = gameState.health > 50 ? '#0f0' : gameState.health > 25 ? '#ff6600' : '#f00';
             document.getElementById('health').style.color = healthColor;
 
-            // Actualizar lista de amenazas
+            // Update threats list - mostrar squadrones como grupos
             let threatsList = document.getElementById('threats-detail');
             threatsList.innerHTML = '';
-            enemies.forEach((enemy) => {
+            
+            for (let squadronId in squadrons) {
+                let squadron = squadrons[squadronId];
                 let threatDiv = document.createElement('div');
-                let typeDisplay = enemy.type === 'TANK' ? 'ESCUADRÓN' : enemy.type;
-                threatDiv.className = `threat-item threat-${enemy.type === 'TANK' ? 'squadron' : enemy.type.toLowerCase()}`;
-                let dist = Math.floor(Math.hypot(enemy.x - gameState.radarCenter.x, enemy.y - gameState.radarCenter.y));
-                threatDiv.textContent = `${enemy.symbol} ${typeDisplay} - ${dist}km`;
+                threatDiv.className = `threat-item threat-${squadron.type.toLowerCase()}`;
+                threatDiv.textContent = `${squadron.symbol} ${squadron.type} (${squadron.enemies.length})`;
                 threatsList.appendChild(threatDiv);
-            });
-
-            // Actualizar defensas disponibles
-            document.getElementById('counter-missiles').textContent = gameState.counterMissiles;
-            document.getElementById('air-missiles').textContent = gameState.airMissiles;
-            document.getElementById('ground-troops').textContent = gameState.groundTroops;
+            }
         }
 
-        function spawnTankGroup(angle, distance) {
+        function createFloatingPoint(x, y, value, color) {
+            floatingPoints.push({
+                x: x,
+                y: y,
+                value: value,
+                color: color,
+                life: 60
+            });
+        }
+
+        function spawnTankSquadron(angle, distance, squadronId) {
             const formationNames = Object.keys(TANK_FORMATIONS);
             const formationType = formationNames[Math.floor(Math.random() * formationNames.length)];
             const formation = TANK_FORMATIONS[formationType];
@@ -626,6 +731,7 @@
                     health: ENEMY_TYPES['TANK'].health,
                     color: ENEMY_TYPES['TANK'].color,
                     symbol: ENEMY_TYPES['TANK'].symbol,
+                    squadronId: squadronId,
                     groupLeader: idx === 0,
                     leaderX: leaderX,
                     leaderY: leaderY,
@@ -640,149 +746,71 @@
         }
 
         function spawnWave() {
-            if (gameState.gameOver) return;
+            if (!gameState.roundActive) return;
 
-            let waveComposition = [];
+            let squadronCount = 0;
 
-            const jetCount = Math.floor(gameState.wave / 2);
+            // Jets
+            const jetCount = Math.ceil(gameState.round / 2);
             for (let i = 0; i < jetCount; i++) {
-                waveComposition.push({ type: 'JET', delay: i * 600 });
+                let angle = Math.random() * Math.PI * 2;
+                let distance = gameState.radarRadius - 30;
+                let x = gameState.radarCenter.x + Math.cos(angle) * distance;
+                let y = gameState.radarCenter.y + Math.sin(angle) * distance;
+
+                let jet = {
+                    x: x,
+                    y: y,
+                    type: 'JET',
+                    angle: angle + Math.PI + (Math.random() - 0.5) * 0.3,
+                    speed: ENEMY_TYPES['JET'].speed,
+                    health: ENEMY_TYPES['JET'].health,
+                    color: ENEMY_TYPES['JET'].color,
+                    symbol: ENEMY_TYPES['JET'].symbol,
+                    squadronId: `JET-${squadronCount++}`
+                };
+
+                enemies.push(jet);
+                gameState.threats++;
+                playRadarSound();
             }
 
-            const missileCount = Math.floor(gameState.wave / 3);
+            // Missiles
+            const missileCount = Math.ceil(gameState.round / 3);
             for (let i = 0; i < missileCount; i++) {
-                waveComposition.push({ type: 'MISSILE', delay: i * 700 + 1000 });
+                let angle = Math.random() * Math.PI * 2;
+                let distance = gameState.radarRadius - 30;
+                let x = gameState.radarCenter.x + Math.cos(angle) * distance;
+                let y = gameState.radarCenter.y + Math.sin(angle) * distance;
+
+                let missile = {
+                    x: x,
+                    y: y,
+                    type: 'MISSILE',
+                    angle: angle + Math.PI + (Math.random() - 0.5) * 0.3,
+                    speed: ENEMY_TYPES['MISSILE'].speed,
+                    health: ENEMY_TYPES['MISSILE'].health,
+                    color: ENEMY_TYPES['MISSILE'].color,
+                    symbol: ENEMY_TYPES['MISSILE'].symbol,
+                    squadronId: `MISSILE-${squadronCount++}`
+                };
+
+                enemies.push(missile);
+                gameState.threats++;
+                playRadarSound();
             }
 
-            const tankGroupCount = Math.ceil(gameState.wave / 2);
+            // Tank squadrons
+            const tankGroupCount = Math.ceil(gameState.round / 2);
             for (let i = 0; i < tankGroupCount; i++) {
-                waveComposition.push({ type: 'TANK_GROUP', delay: i * 1000 + 1500 });
-            }
-
-            waveComposition.forEach((item) => {
-                setTimeout(() => {
-                    if (item.type === 'JET') {
-                        let angle = Math.random() * Math.PI * 2;
-                        let distance = gameState.radarRadius - 30;
-                        let x = gameState.radarCenter.x + Math.cos(angle) * distance;
-                        let y = gameState.radarCenter.y + Math.sin(angle) * distance;
-
-                        let jet = {
-                            x: x,
-                            y: y,
-                            type: 'JET',
-                            angle: angle + Math.PI + (Math.random() - 0.5) * 0.3,
-                            speed: ENEMY_TYPES['JET'].speed,
-                            health: ENEMY_TYPES['JET'].health,
-                            color: ENEMY_TYPES['JET'].color,
-                            symbol: ENEMY_TYPES['JET'].symbol
-                        };
-
-                        enemies.push(jet);
-                        gameState.threats++;
-                        playRadarSound();
-
-                    } else if (item.type === 'MISSILE') {
-                        let angle = Math.random() * Math.PI * 2;
-                        let distance = gameState.radarRadius - 30;
-                        let x = gameState.radarCenter.x + Math.cos(angle) * distance;
-                        let y = gameState.radarCenter.y + Math.sin(angle) * distance;
-
-                        let missile = {
-                            x: x,
-                            y: y,
-                            type: 'MISSILE',
-                            angle: angle + Math.PI + (Math.random() - 0.5) * 0.3,
-                            speed: ENEMY_TYPES['MISSILE'].speed,
-                            health: ENEMY_TYPES['MISSILE'].health,
-                            color: ENEMY_TYPES['MISSILE'].color,
-                            symbol: ENEMY_TYPES['MISSILE'].symbol
-                        };
-
-                        enemies.push(missile);
-                        gameState.threats++;
-                        playRadarSound();
-
-                    } else if (item.type === 'TANK_GROUP') {
-                        let angle = Math.random() * Math.PI * 2;
-                        let distance = gameState.radarRadius - 30;
-                        spawnTankGroup(angle, distance);
-                    }
-                }, item.delay);
-            });
-
-            gameState.wave++;
-            
-            // Regenerar defensas con cada oleada
-            gameState.counterMissiles += 2;
-            gameState.airMissiles += 2;
-            gameState.groundTroops += 1;
-        }
-
-        function deployDefense(defenseType) {
-            if (gameState.gameOver || gameState.paused) return;
-
-            // Verificar disponibilidad
-            if (defenseType === 'COUNTER_MISSILE' && gameState.counterMissiles <= 0) return;
-            if (defenseType === 'AIR_MISSILE' && gameState.airMissiles <= 0) return;
-            if (defenseType === 'GROUND_TROOP' && gameState.groundTroops <= 0) return;
-
-            // Desplegar defensa en el centro del radar
-            let def = {
-                x: gameState.radarCenter.x,
-                y: gameState.radarCenter.y,
-                type: defenseType,
-                color: DEFENSE_TYPES[defenseType].color,
-                symbol: DEFENSE_TYPES[defenseType].symbol,
-                speed: DEFENSE_TYPES[defenseType].speed,
-                range: DEFENSE_TYPES[defenseType].range,
-                duration: 15, // 15 segundos
-                fireRate: 0,
-                fireRateMax: 5
-            };
-
-            defenses.push(def);
-
-            // Decrementar disponibilidad
-            if (defenseType === 'COUNTER_MISSILE') gameState.counterMissiles--;
-            if (defenseType === 'AIR_MISSILE') gameState.airMissiles--;
-            if (defenseType === 'GROUND_TROOP') gameState.groundTroops--;
-
-            playRadarSound();
-        }
-
-        function fireDefense(def, toX, toY) {
-            def.fireRate--;
-            if (def.fireRate > 0) return;
-
-            def.fireRate = def.fireRateMax;
-
-            let angle = Math.atan2(toY - def.y, toX - def.x);
-            projectiles.push({
-                x: def.x,
-                y: def.y,
-                angle: angle,
-                speed: def.speed,
-                defenseType: def.type
-            });
-
-            playFireSound();
-        }
-
-        function createExplosion(x, y) {
-            for (let i = 0; i < 3; i++) {
-                explosions.push({
-                    x: x + (Math.random() - 0.5) * 20,
-                    y: y + (Math.random() - 0.5) * 20,
-                    radius: 5,
-                    life: 1,
-                    maxLife: 1
-                });
+                let angle = Math.random() * Math.PI * 2;
+                let distance = gameState.radarRadius - 30;
+                spawnTankSquadron(angle, distance, `TANK-${squadronCount++}`);
             }
         }
 
         function handleRadarClick(e) {
-            if (gameState.gameOver || gameState.paused) return;
+            if (gameState.gameOver || gameState.paused || !gameState.roundActive) return;
 
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
@@ -825,15 +853,99 @@
         function damageBase(amount) {
             gameState.health -= amount;
             if (gameState.health <= 0) {
-                endGame();
+                endRound();
             }
+        }
+
+        function startRound() {
+            gameState.roundActive = true;
+            gameState.roundTimeRemaining = gameState.roundTime;
+            gameState.roundStartTime = Date.now();
+            gameState.inShop = false;
+            document.getElementById('shop-overlay').classList.remove('active');
+            enemies = [];
+            projectiles = [];
+            gameState.threats = 0;
+            updateSquadrons();
+            spawnWave();
+        }
+
+        function endRound() {
+            gameState.roundActive = false;
+            if (gameState.health <= 0) {
+                endGame();
+            } else {
+                showShop();
+            }
+        }
+
+        function showShop() {
+            gameState.inShop = true;
+            const overlay = document.getElementById('shop-overlay');
+            overlay.classList.add('active');
+
+            document.getElementById('shop-points-display').textContent = 
+                `PUNTOS DISPONIBLES: ${gameState.roundPoints}`;
+
+            const shopItems = document.getElementById('shop-items');
+            shopItems.innerHTML = '';
+
+            for (let defenseKey in DEFENSES) {
+                let defense = DEFENSES[defenseKey];
+                let canAfford = gameState.roundPoints >= defense.cost;
+                
+                let item = document.createElement('div');
+                item.className = `shop-item ${!canAfford ? 'disabled' : ''}`;
+                item.innerHTML = `
+                    <h3>${defense.name}</h3>
+                    <p>${defense.description}</p>
+                    <div class="shop-price">Costo: ${defense.cost} puntos</div>
+                `;
+                
+                if (canAfford) {
+                    item.onclick = () => buyDefense(defenseKey);
+                    item.style.cursor = 'pointer';
+                }
+                
+                shopItems.appendChild(item);
+            }
+        }
+
+        function buyDefense(defenseKey) {
+            let defense = DEFENSES[defenseKey];
+            if (gameState.roundPoints >= defense.cost) {
+                gameState.roundPoints -= defense.cost;
+                gameState.score += defense.cost;
+                
+                // Add defense to base
+                gameState.defenses.push({
+                    type: defenseKey,
+                    x: gameState.radarCenter.x + (Math.random() - 0.5) * 60,
+                    y: gameState.radarCenter.y + (Math.random() - 0.5) * 60,
+                    ...defense
+                });
+
+                document.getElementById('shop-points-display').textContent = 
+                    `PUNTOS DISPONIBLES: ${gameState.roundPoints}`;
+
+                playFireSound();
+            }
+        }
+
+        function continueGame() {
+            gameState.round++;
+            gameState.roundTime *= 1.1; // Add 10%
+            gameState.health = Math.min(100, gameState.health + 10); // Heal 10% per round
+            gameState.roundPoints = 0;
+            startRound();
         }
 
         function endGame() {
             gameState.gameOver = true;
+            gameState.roundActive = false;
             document.getElementById('game-over').style.display = 'block';
             document.getElementById('final-score').textContent = `Puntuación Final: ${gameState.score}`;
-            document.getElementById('final-wave').textContent = `Oleadas Completadas: ${gameState.wave - 1}`;
+            document.getElementById('final-round').textContent = `Rondas Completadas: ${gameState.round - 1}`;
             playGameOverSound();
         }
 
@@ -841,7 +953,7 @@
             gameState.paused = !gameState.paused;
         }
 
-        // Sonidos con Web Audio API
+        // Audio
         let audioContext = null;
 
         function initAudio() {
@@ -891,30 +1003,26 @@
             if (e.key.toLowerCase() === 'r') {
                 location.reload();
             }
-            if (e.key.toLowerCase() === 'm') {
-                deployDefense('COUNTER_MISSILE');
-            }
-            if (e.key.toLowerCase() === 'n') {
-                deployDefense('AIR_MISSILE');
-            }
-            if (e.key.toLowerCase() === 'k') {
-                deployDefense('GROUND_TROOP');
-            }
         });
 
         // Game loop
         function gameLoop() {
+            if (gameState.roundActive && !gameState.paused) {
+                gameState.roundTimeRemaining = gameState.roundTime - (Date.now() - gameState.roundStartTime) / 1000;
+                
+                if (gameState.roundTimeRemaining <= 0) {
+                    endRound();
+                }
+            }
+            
             update();
             requestAnimationFrame(gameLoop);
         }
 
-        // Inicio del juego
+        // Init
         window.addEventListener('load', () => {
             initAudio();
-            spawnWave();
-            
-            setInterval(spawnWave, 8000);
-            
+            startRound();
             gameLoop();
         });
     </script>
