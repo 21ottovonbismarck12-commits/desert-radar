@@ -223,15 +223,18 @@ class RadarSystem {
 
             // Calcular centro del escuadrón
             let avgX = 0, avgY = 0;
+            let avgAngle = 0;
             squadron.enemies.forEach(enemy => {
                 avgX += enemy.x;
                 avgY += enemy.y;
+                avgAngle += enemy.angle;
             });
             avgX /= squadron.enemies.length;
             avgY /= squadron.enemies.length;
+            avgAngle /= squadron.enemies.length;
 
-            // Dibujar símbolo del contacto
-            this.drawContactSymbol(avgX, avgY, squadron);
+            // Dibujar símbolo del contacto con rotación
+            this.drawContactSymbol(avgX, avgY, avgAngle, squadron);
             
             // Dibujar círculo de escuadrón
             this.ctx.globalAlpha = 0.3;
@@ -252,127 +255,39 @@ class RadarSystem {
         }
     }
 
-    drawContactSymbol(x, y, squadron) {
+    drawContactSymbol(x, y, angle, squadron) {
         this.ctx.fillStyle = squadron.color;
         this.ctx.strokeStyle = squadron.color;
         this.ctx.lineWidth = 1.5;
         this.ctx.globalAlpha = 0.9;
 
         const size = 12;
+
+        // Guardar estado del contexto
+        this.ctx.save();
+        
+        // Trasladar al punto y rotar según el ángulo de movimiento
+        this.ctx.translate(x, y);
+        this.ctx.rotate(angle);
         
         switch(squadron.type) {
             case 'JET':
-                // Símbolo de avión (triángulo)
+                // Símbolo de avión (triángulo apuntando hacia la dirección)
                 this.ctx.beginPath();
-                this.ctx.moveTo(x, y - size);
-                this.ctx.lineTo(x + size, y + size);
-                this.ctx.lineTo(x - size, y + size);
+                this.ctx.moveTo(0, -size);
+                this.ctx.lineTo(size, size);
+                this.ctx.lineTo(-size, size);
                 this.ctx.closePath();
                 this.ctx.fill();
                 break;
             case 'MISSILE':
-                // Símbolo de misil (flecha)
+                // Símbolo de misil (flecha apuntando hacia la dirección)
                 this.ctx.beginPath();
-                this.ctx.moveTo(x, y - size);
-                this.ctx.lineTo(x + size/2, y + size/2);
-                this.ctx.lineTo(x, y + size/3);
-                this.ctx.lineTo(x - size/2, y + size/2);
+                this.ctx.moveTo(0, -size);
+                this.ctx.lineTo(size/2, size/2);
+                this.ctx.lineTo(0, size/3);
+                this.ctx.lineTo(-size/2, size/2);
                 this.ctx.closePath();
                 this.ctx.fill();
                 break;
-            case 'TANK':
-                // Símbolo de tanque (cuadrado con tureta)
-                this.ctx.fillRect(x - size, y - size/2, size * 2, size);
-                this.ctx.fillRect(x - size/4, y - size, size/2, size/2);
-                break;
-        }
-
-        // Pulso de detección
-        this.ctx.globalAlpha = 0.3;
-        this.ctx.strokeStyle = squadron.color;
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.arc(x, y, size + 8, 0, Math.PI * 2);
-        this.ctx.stroke();
-    }
-
-    drawDefenses(defenses) {
-        this.ctx.globalAlpha = 0.7;
-        defenses.forEach(defense => {
-            const color = defense.type === 'SHIELD' ? '#0099ff' : '#00ff00';
-            
-            // Base de la defensa
-            this.ctx.fillStyle = color;
-            this.ctx.beginPath();
-            this.ctx.arc(defense.x, defense.y, 6, 0, Math.PI * 2);
-            this.ctx.fill();
-            
-            // Rango de cobertura
-            this.ctx.strokeStyle = color;
-            this.ctx.lineWidth = 1;
-            this.ctx.globalAlpha = 0.3;
-            this.ctx.beginPath();
-            this.ctx.arc(defense.x, defense.y, defense.range, 0, Math.PI * 2);
-            this.ctx.stroke();
-            
-            this.ctx.globalAlpha = 0.7;
-        });
-    }
-
-    drawFloatingPoints(floatingPoints) {
-        this.ctx.globalAlpha = 1;
-        floatingPoints.forEach((point) => {
-            this.ctx.fillStyle = point.color;
-            this.ctx.font = 'bold 14px Courier New';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(`+${point.value}`, point.x, point.y);
-        });
-    }
-
-    drawCenter() {
-        // Centro del radar
-        this.ctx.globalAlpha = 1;
-        this.ctx.fillStyle = '#00ff00';
-        this.ctx.beginPath();
-        this.ctx.arc(this.center.x, this.center.y, 6, 0, Math.PI * 2);
-        this.ctx.fill();
-        
-        // Marcas de orientación
-        this.ctx.strokeStyle = '#00ff00';
-        this.ctx.lineWidth = 1;
-        const markerSize = 8;
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.center.x - markerSize, this.center.y);
-        this.ctx.lineTo(this.center.x + markerSize, this.center.y);
-        this.ctx.moveTo(this.center.x, this.center.y - markerSize);
-        this.ctx.lineTo(this.center.x, this.center.y + markerSize);
-        this.ctx.stroke();
-    }
-
-    groupEnemiesBySquadron(enemies) {
-        const squadrons = {};
-        enemies.forEach(enemy => {
-            if (!squadrons[enemy.squadronId]) {
-                squadrons[enemy.squadronId] = {
-                    enemies: [],
-                    type: enemy.type,
-                    color: enemy.color,
-                    symbol: enemy.symbol
-                };
-            }
-            squadrons[enemy.squadronId].enemies.push(enemy);
-        });
-        return squadrons;
-    }
-}
-
-const canvas = document.getElementById('radarCanvas');
-function resizeCanvas() {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-const radar = new RadarSystem(canvas);
+            case 'TANK':\n                // Símbolo de tanque (rectángulo con dirección frontal)\n                this.ctx.fillRect(-size, -size/2, size * 2, size);\n                this.ctx.fillRect(-size/4, -size, size/2, size/2);\n                break;\n        }\n        \n        // Restaurar contexto\n        this.ctx.restore();\n\n        // Pulso de detección (sin rotación)\n        this.ctx.globalAlpha = 0.3;\n        this.ctx.strokeStyle = squadron.color;\n        this.ctx.lineWidth = 2;\n        this.ctx.beginPath();\n        this.ctx.arc(x, y, size + 8, 0, Math.PI * 2);\n        this.ctx.stroke();\n    }\n\n    drawDefenses(defenses) {\n        this.ctx.globalAlpha = 0.7;\n        defenses.forEach(defense => {\n            const color = defense.type === 'SHIELD' ? '#0099ff' : '#00ff00';\n            \n            // Base de la defensa\n            this.ctx.fillStyle = color;\n            this.ctx.beginPath();\n            this.ctx.arc(defense.x, defense.y, 6, 0, Math.PI * 2);\n            this.ctx.fill();\n            \n            // Rango de cobertura\n            this.ctx.strokeStyle = color;\n            this.ctx.lineWidth = 1;\n            this.ctx.globalAlpha = 0.3;\n            this.ctx.beginPath();\n            this.ctx.arc(defense.x, defense.y, defense.range, 0, Math.PI * 2);\n            this.ctx.stroke();\n            \n            this.ctx.globalAlpha = 0.7;\n        });\n    }\n\n    drawFloatingPoints(floatingPoints) {\n        this.ctx.globalAlpha = 1;\n        floatingPoints.forEach((point) => {\n            this.ctx.fillStyle = point.color;\n            this.ctx.font = 'bold 14px Courier New';\n            this.ctx.textAlign = 'center';\n            this.ctx.textBaseline = 'middle';\n            this.ctx.fillText(`+${point.value}`, point.x, point.y);\n        });\n    }\n\n    drawCenter() {\n        // Centro del radar\n        this.ctx.globalAlpha = 1;\n        this.ctx.fillStyle = '#00ff00';\n        this.ctx.beginPath();\n        this.ctx.arc(this.center.x, this.center.y, 6, 0, Math.PI * 2);\n        this.ctx.fill();\n        \n        // Marcas de orientación\n        this.ctx.strokeStyle = '#00ff00';\n        this.ctx.lineWidth = 1;\n        const markerSize = 8;\n        this.ctx.beginPath();\n        this.ctx.moveTo(this.center.x - markerSize, this.center.y);\n        this.ctx.lineTo(this.center.x + markerSize, this.center.y);\n        this.ctx.moveTo(this.center.x, this.center.y - markerSize);\n        this.ctx.lineTo(this.center.x, this.center.y + markerSize);\n        this.ctx.stroke();\n    }\n\n    groupEnemiesBySquadron(enemies) {\n        const squadrons = {};\n        enemies.forEach(enemy => {\n            if (!squadrons[enemy.squadronId]) {\n                squadrons[enemy.squadronId] = {\n                    enemies: [],\n                    type: enemy.type,\n                    color: enemy.color,\n                    symbol: enemy.symbol\n                };\n            }\n            squadrons[enemy.squadronId].enemies.push(enemy);\n        });\n        return squadrons;\n    }\n}\n\nconst canvas = document.getElementById('radarCanvas');\nfunction resizeCanvas() {\n    canvas.width = canvas.offsetWidth;\n    canvas.height = canvas.offsetHeight;\n}\nresizeCanvas();\nwindow.addEventListener('resize', resizeCanvas);\n\nconst radar = new RadarSystem(canvas);\n
